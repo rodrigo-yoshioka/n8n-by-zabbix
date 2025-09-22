@@ -1,11 +1,9 @@
 #!/opt/n8n-by-zabbix/venv/bin/python3
 
 import sqlite3
-import json
 import requests
 import sys
 import configparser
-from datetime import datetime, timezone, timedelta
 
 # --- Constantes de Configuração ---
 CONFIG_FILE = '/etc/zabbix/n8n_monitor.conf'
@@ -14,7 +12,7 @@ COLLECTION_INTERVAL_SECONDS = 3600  # 1 hora
 
 # --- Funções de Configuração e Zabbix API ---
 def load_config():
-    """Carrega as configurações do arquivo .conf."""
+    """Carrega as configurações do arquivo.conf."""
     config = configparser.ConfigParser()
     if not config.read(CONFIG_FILE):
         print(f"Erro: Arquivo de configuração não encontrado em {CONFIG_FILE}", file=sys.stderr)
@@ -34,7 +32,7 @@ def zabbix_api_request(method, params):
         "jsonrpc": "2.0",
         "method": method,
         "params": params,
-        "id": 1 # ID da requisição
+        "id": 1 # ID da requisicao
     }
     url = zabbix_config['API_URL']
     try:
@@ -42,7 +40,7 @@ def zabbix_api_request(method, params):
         response.raise_for_status()
         result = response.json()
         if 'error' in result:
-            print(f"Erro na API do Zabbix ({method}): {result['error']['message']}", file=sys.stderr)
+            print(f"Erro na API do Zabbix ({method}): {result['error']['data']}", file=sys.stderr)
             return None
         return result.get('result')
     except requests.exceptions.RequestException as e:
@@ -52,48 +50,42 @@ def zabbix_api_request(method, params):
         print(f"Erro: Resposta inesperada da API do Zabbix para {method}.", file=sys.stderr)
         return None
 
-def zabbix_create_item(workflow_id, workflow_name, item, valor):
-    """Cria ou atualiza um item no Zabbix."""
-    url = zabbix_config['API_URL']
-    host_interface_id = zabbix_config['HOST_INTERFACE_ID']
-    host_id = zabbix_config['HOST_ID']
-    timezone_offset_hours = int(zabbix_config['TIMEZONE_OFFSET_HOURS'])
-
-    item_name = f"{workflow_name} - {item}"
-    item_key = f"{workflow_id}.{item}"
-
-    # Converte o horário UTC para GMT-3 e ajusta o tipo de informação
-    if item in ["createdAt", "Update"]:
-        try:
-            dt_utc = datetime.strptime(valor.split('.')[0], '%Y-%m-%d %H:%M:%S')
-            dt_gmt3 = dt_utc.replace(tzinfo=timezone.utc) + timedelta(hours=timezone_offset_hours)
-            formatted_value = dt_gmt3.strftime('%Y-%m-%d %H:%M:%S')
-            value_type = 4 # Tipo de dado: Texto
-        except (ValueError, TypeError):
-            print(f"Aviso: Não foi possível converter a data '{valor}' para GMT-3. Usando valor original.", file=sys.stderr)
-            formatted_value = valor
-            value_type = 4
-    elif item == "Status":
-        formatted_value = int(valor)
-        value_type = 3 # Tipo de dado: Numérico (unsigned)
+# Obtem a interfaceid associada ao host
+def zabbix_get_interface_id(hostid):
+    params = {"hostids": hostid}
+    response = zabbix_api_request("hostinterface.get", params)
+    if len(response) > 0:
+        return response[0]["interfaceid"]
     else:
-        formatted_value = valor
-        value_type = 4 # Tipo de dado: Texto
+        raise Exception(f"Interface nao encontrada para o host ID '{hostid}'.")
+
+def zabbix_create_item(workflow_id, workflow_name, item):
+    """Cria ou atualiza um item no Zabbix."""
+    host_id = zabbix_config['HOST_ID']
+    host_interface_id = zabbix_get_interface_id(host_id)
+
+    if item == "Status":
+        item_name = f"Workflow - {workflow_name} - {item}"
+        item_key = f"n8n.workflow.status[{workflow_id}]"
+        value_type = 3 # Tipo de dado: Numérico (unsigned)
+        tags = {"tag":"component","value":"Cron"}
+    elif item == "Update":
+        item_name = f"Workflow - {workflow_name} - {item}"
+        item_key = f"n8n.workflow.update[{workflow_id}]"
+        value_type = 3  # Tipo de dado: Numérico (unsigned)
+        tags = {"tag": "component", "value": "Cron"}
 
     params = {
         "name": item_name,
-        "key": item_key,
-        "type": 3, # Zabbix Agent (passive) para que o Zabbix colete o valor
+        "key_": item_key,
+        "type": 0, # Zabbix Agent (passive) para que o Zabbix colete o valor
         "value_type": value_type,
         "interfaceid": host_interface_id,
         "hostid": host_id,
-        "delay": COLLECTION_INTERVAL_SECONDS,
-        "enabled": 1,
-        "history": 90,
-        "trends": 400,
-        "status": 0,
-        "delta": 0,
-        "params": ""
+        "delay": "60s",
+        "history": "90d",
+        "trends": "400d",
+        "tags": tags
     }
 
     # Verifica se o item já existe
@@ -106,41 +98,20 @@ def zabbix_create_item(workflow_id, workflow_name, item, valor):
     if existing_items:
         # Se o item existe, atualiza-o
         item_id = existing_items[0]['itemid']
+        params.pop("hostid", None)
         params["itemid"] = item_id
-        update_response = zabbix_api_request(url, headers, "item.update", params)
+        update_response = zabbix_api_request("item.update", params)
         if update_response:
             print(f"Item atualizado: '{item_name}' (Key: {item_key})")
         else:
             print(f"Falha ao atualizar item: '{item_name}' (Key: {item_key})", file=sys.stderr)
     else:
         # Se o item não existe, cria-o
-        create_response = zabbix_api_request(url, headers, "item.create", params)
+        create_response = zabbix_api_request("item.create", params)
         if create_response:
             print(f"Item criado: '{item_name}' (Key: {item_key})")
         else:
             print(f"Falha ao criar item: '{item_name}' (Key: {item_key})", file=sys.stderr)
-
-def get_or_create_application(config, headers, url, host_id, app_name):
-    """Obtém o ID de uma aplicação existente ou a cria."""
-    applications = zabbix_api_request(url, headers, "application.get", {
-        "output": ["applicationid"],
-        "hostids": host_id,
-        "filter": {"name": app_name}
-    })
-
-    if applications:
-        return applications[0]['applicationid']
-    else:
-        app_params = {
-            "name": app_name,
-            "hostid": host_id
-        }
-        created_app = zabbix_api_request(url, headers, "application.create", app_params)
-        if created_app:
-            return created_app['applicationids'][0]
-        else:
-            print(f"Erro: Falha ao criar aplicação '{app_name}'", file=sys.stderr)
-            return None
 
 # --- Funções de Banco de Dados ---
 def get_workflows_from_db():
@@ -181,20 +152,16 @@ def main():
         return
 
     for wf in workflows:
-        print(wf)
         workflow_id = wf['id']
         workflow_name = wf['name'] if wf['name'] else f"Workflow_{workflow_id}"
 
         # Cria ou atualiza o item 'Status'
         if wf['active'] == 1:
-            create_zabbix_item(workflow_id, workflow_name, "Status", wf['active'])
+            """Cria ou atualiza o item com o status do job"""
+            zabbix_create_item(workflow_id, workflow_name, "Status")
 
-        #
-        # # Cria ou atualiza o item 'createdAt'
-        # create_zabbix_item(config, zabbix_headers, workflow_id, workflow_name, "createdAt", wf['createdAt'])
-        #
-        # # Cria ou atualiza o item 'updatedAt'
-        # create_zabbix_item(config, zabbix_headers, workflow_id, workflow_name, "updatedAt", wf['updatedAt'])
+            """Cria ou atualiza o item 'updatedAt'"""
+            zabbix_create_item(workflow_id, workflow_name, "Update")
 
 if __name__ == "__main__":
     main()
