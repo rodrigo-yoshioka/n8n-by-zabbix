@@ -1,5 +1,6 @@
 #!/opt/n8n-by-zabbix/venv/bin/python3
 
+import psycopg2
 import sqlite3
 import requests
 import sys
@@ -59,6 +60,7 @@ def zabbix_get_interface_id(hostid):
     else:
         raise Exception(f"Interface nao encontrada para o host ID '{hostid}'.")
 
+# Cria ou atualiza um item no zabbix
 def zabbix_create_item(workflow_id, workflow_name, item):
     """Cria ou atualiza um item no Zabbix."""
     host_id = zabbix_config['HOST_ID']
@@ -68,25 +70,39 @@ def zabbix_create_item(workflow_id, workflow_name, item):
         item_name = f"Workflow - {workflow_name} - {item}"
         item_key = f"n8n.workflow.status[{workflow_id}]"
         value_type = 3 # Tipo de dado: Numérico (unsigned)
+        preprocessing = {"type": 5, "params": "(\\d+)\n\\1", "error_handler": 0}
         tags = {"tag":"component","value":"Cron"}
+        params = {
+            "name": item_name,
+            "key_": item_key,
+            "type": 0,  # Zabbix Agent (passive) para que o Zabbix colete o valor
+            "value_type": value_type,
+            "interfaceid": host_interface_id,
+            "hostid": host_id,
+            "delay": "60s",
+            "history": "90d",
+            "trends": "400d",
+            "preprocessing": preprocessing,
+            "tags": tags
+        }
     elif item == "Update":
         item_name = f"Workflow - {workflow_name} - {item}"
         item_key = f"n8n.workflow.update[{workflow_id}]"
         value_type = 3  # Tipo de dado: Numérico (unsigned)
+        preprocessing = ""
         tags = {"tag": "component", "value": "Cron"}
-
-    params = {
-        "name": item_name,
-        "key_": item_key,
-        "type": 0, # Zabbix Agent (passive) para que o Zabbix colete o valor
-        "value_type": value_type,
-        "interfaceid": host_interface_id,
-        "hostid": host_id,
-        "delay": "60s",
-        "history": "90d",
-        "trends": "400d",
-        "tags": tags
-    }
+        params = {
+            "name": item_name,
+            "key_": item_key,
+            "type": 0, # Zabbix Agent (passive) para que o Zabbix colete o valor
+            "value_type": value_type,
+            "interfaceid": host_interface_id,
+            "hostid": host_id,
+            "delay": "60s",
+            "history": "90d",
+            "trends": "400d",
+            "tags": tags
+        }
 
     # Verifica se o item já existe
     existing_items = zabbix_api_request("item.get", {

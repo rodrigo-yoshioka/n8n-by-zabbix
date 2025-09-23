@@ -49,9 +49,11 @@ def coleta_update(workflow_id, db_path):
         dados = cursor.fetchone()
         data = dados[2]
         dt_utc = datetime.strptime(data.split('.')[0], '%Y-%m-%d %H:%M:%S')
-        dt_gmt3 = dt_utc.replace(tzinfo=timezone.utc) + timedelta(hours=-3)
-        formatted_value = dt_gmt3.strftime('%Y-%m-%d %H:%M:%S')
-        return formatted_value
+        dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+        fuso_horario_gmt3 = timezone(timedelta(hours=-3))
+        dt_gmt3 = dt_utc.astimezone(fuso_horario_gmt3)
+        unix_time = int(dt_gmt3.timestamp())
+        return unix_time
     except sqlite3.Error as e:
         print(f"Erro ao acessar o banco de dados SQLite: {e}", file=sys.stderr)
         return []
