@@ -1,7 +1,6 @@
 #!/opt/n8n-by-zabbix/venv/bin/python3
 
 import psycopg2
-import sqlite3
 import requests
 import sys
 import configparser
@@ -133,17 +132,31 @@ def zabbix_create_item(workflow_id, workflow_name, item):
 def get_workflows_from_db():
     """Busca todos os workflows ativos do banco de dados SQLite."""
     workflows_data = []
-    db_path = n8n_config['DB_PATH']
     conn = None
     try:
-        conn = sqlite3.connect(db_path)
+        # Extrai os dados de conexão do arquivo de configuração
+        db_host = n8n_config['DB_POSTGRESDB_HOST']
+        db_port = n8n_config['DB_POSTGRESDB_PORT']
+        db_database = n8n_config['DB_POSTGRESDB_DATABASE']
+        db_user = n8n_config['DB_POSTGRESDB_USER']
+        db_password = n8n_config['DB_POSTGRESDB_PASSWORD']
+
+        # Conecta ao banco de dados PostgreSQL
+        conn = psycopg2.connect(
+            host=db_host,
+            port=db_port,
+            database=db_database,
+            user=db_user,
+            password=db_password
+        )
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, name, active, updatedAt
-            FROM workflow_entity
-            WHERE active = 1
+            SELECT id, name, active, "updatedAt"
+            FROM n8n.workflow_entity
+            WHERE active = true
         """)
         rows = cursor.fetchall()
+
         for row in rows:
             workflows_data.append({
                 'id': row[0],
@@ -152,8 +165,8 @@ def get_workflows_from_db():
                 'updatedAt': row[3]
             })
         return workflows_data
-    except sqlite3.Error as e:
-        print(f"Erro ao acessar o banco de dados SQLite: {e}", file=sys.stderr)
+    except psycopg2.Error as e:
+        print(f"Erro ao acessar o banco de dados PostgreSQL: {e}", file=sys.stderr)
         return []
     finally:
         if conn:
