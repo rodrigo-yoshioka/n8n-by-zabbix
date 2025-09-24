@@ -32,7 +32,7 @@ def get_db_connection(n8n_config):
         print(f"Erro de conexão com o banco de dados PostgreSQL: {e}", file=sys.stderr)
         return None
 
-def coleta_status(workflow_id, n8n_config):
+def coleta_execucao_status(workflow_id, n8n_config):
     conn = get_db_connection(n8n_config)
     if conn is None:
         return 0
@@ -48,6 +48,57 @@ def coleta_status(workflow_id, n8n_config):
             """, (workflow_id,))
         total = cursor.fetchone()
         return total[0]
+    except psycopg2.Error as e:
+        print(f"Erro ao acessar o banco de dados PostgreSQL: {e}", file=sys.stderr)
+        return 0
+    finally:
+        if conn:
+            conn.close()
+
+def coleta_workflow_status(workflow_id, n8n_config):
+    conn = get_db_connection(n8n_config)
+    if conn is None:
+        return 0
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+                SELECT "active" 
+                FROM n8n."workflow_entity" 
+                WHERE "id" = %s
+            """, (workflow_id,))
+        active = cursor.fetchone()
+        if active[0] == True:
+            ativo = 1
+        else:
+            ativo = 0
+
+        return ativo
+    except psycopg2.Error as e:
+        print(f"Erro ao acessar o banco de dados PostgreSQL: {e}", file=sys.stderr)
+        return 0
+    finally:
+        if conn:
+            conn.close()
+
+def coleta_is_archived(workflow_id, n8n_config):
+    conn = get_db_connection(n8n_config)
+    if conn is None:
+        return 0
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+                SELECT "isArchived" 
+                FROM n8n."workflow_entity" 
+                WHERE "id" = %s
+            """, (workflow_id,))
+        archived = cursor.fetchone()
+        if archived[0] == True:
+            arquivado = 1
+        else:
+            arquivado = 0
+        return arquivado
     except psycopg2.Error as e:
         print(f"Erro ao acessar o banco de dados PostgreSQL: {e}", file=sys.stderr)
         return 0
@@ -97,8 +148,12 @@ if __name__ == "__main__":
         action = sys.argv[1]
         workflow = sys.argv[2]
 
-        if action == "status":
-            print(coleta_status(workflow, n8n_config))
+        if action == "execucao_status":
+            print(coleta_execucao_status(workflow, n8n_config))
+        elif action == "workflow_status":
+            print(coleta_workflow_status(workflow, n8n_config))
+        elif action == "is_archived":
+            print(coleta_is_archived(workflow, n8n_config))
         elif action == "update":
             print(coleta_update(workflow, n8n_config))
 

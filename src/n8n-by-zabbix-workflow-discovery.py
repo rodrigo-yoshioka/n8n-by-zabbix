@@ -65,8 +65,28 @@ def zabbix_create_item(workflow_id, workflow_name, item):
     host_id = zabbix_config['HOST_ID']
     host_interface_id = zabbix_get_interface_id(host_id)
 
-    if item == "Status":
-        item_name = f"Workflow - {workflow_name} - {item}"
+    if item == "Execution_Status":
+        item_name = f"Workflow - {workflow_name} - Status Execução"
+        item_key = f"n8n.workflow.execution.status[{workflow_id}]"
+        value_type = 3 # Tipo de dado: Numérico (unsigned)
+        preprocessing = {"type": 5, "params": "(\\d+)\n\\1", "error_handler": 0}
+        tags = {"tag":"component","value":"Cron"}
+        params = {
+            "name": item_name,
+            "key_": item_key,
+            "type": 0,  # Zabbix Agent (passive) para que o Zabbix colete o valor
+            "value_type": value_type,
+            "interfaceid": host_interface_id,
+            "hostid": host_id,
+            "delay": "60s",
+            "history": "90d",
+            "trends": "400d",
+            "preprocessing": preprocessing,
+            "description": "Coleta qual o status das execuções do workflow.",
+            "tags": tags
+        }
+    elif item == "Workflow_Status":
+        item_name = f"Workflow - {workflow_name} - Status"
         item_key = f"n8n.workflow.status[{workflow_id}]"
         value_type = 3 # Tipo de dado: Numérico (unsigned)
         preprocessing = {"type": 5, "params": "(\\d+)\n\\1", "error_handler": 0}
@@ -82,6 +102,27 @@ def zabbix_create_item(workflow_id, workflow_name, item):
             "history": "90d",
             "trends": "400d",
             "preprocessing": preprocessing,
+            "description": "Coleta se o workflow está ativo ou não.",
+            "tags": tags
+        }
+    elif item == "Workflow_Archived":
+        item_name = f"Workflow - {workflow_name} - Arquivado"
+        item_key = f"n8n.workflow.is.archived[{workflow_id}]"
+        value_type = 3 # Tipo de dado: Numérico (unsigned)
+        preprocessing = {"type": 5, "params": "(\\d+)\n\\1", "error_handler": 0}
+        tags = {"tag":"component","value":"Cron"}
+        params = {
+            "name": item_name,
+            "key_": item_key,
+            "type": 0,  # Zabbix Agent (passive) para que o Zabbix colete o valor
+            "value_type": value_type,
+            "interfaceid": host_interface_id,
+            "hostid": host_id,
+            "delay": "60s",
+            "history": "90d",
+            "trends": "400d",
+            "preprocessing": preprocessing,
+            "description": "Coleta se o workflow foi arquivado. Este item faz parte das triggers, caso seja arquivado, alertas não serão disparados.",
             "tags": tags
         }
     elif item == "Update":
@@ -97,9 +138,11 @@ def zabbix_create_item(workflow_id, workflow_name, item):
             "value_type": value_type,
             "interfaceid": host_interface_id,
             "hostid": host_id,
+            "units": "unixtime",
             "delay": "60s",
             "history": "90d",
             "trends": "400d",
+            "description": "Coleta a data da última alteração do workflow.",
             "tags": tags
         }
 
@@ -151,9 +194,9 @@ def get_workflows_from_db():
         )
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, name, active, "updatedAt"
+            SELECT id, name, active, "updatedAt", "isArchived"
             FROM n8n.workflow_entity
-            WHERE active = true
+            WHERE "isArchived" = false
         """)
         rows = cursor.fetchall()
 
@@ -162,7 +205,8 @@ def get_workflows_from_db():
                 'id': row[0],
                 'name': row[1],
                 'active': row[2],
-                'updatedAt': row[3]
+                'updatedAt': row[3],
+                'isArchived': row[4]
             })
         return workflows_data
     except psycopg2.Error as e:
@@ -185,9 +229,15 @@ def main():
         workflow_name = wf['name'] if wf['name'] else f"Workflow_{workflow_id}"
 
         # Cria ou atualiza o item 'Status'
-        if wf['active'] == 1:
-            """Cria ou atualiza o item com o status do job"""
-            zabbix_create_item(workflow_id, workflow_name, "Status")
+        if wf['isArchived'] == 0:
+            """Cria ou atualiza o item com o status de execucao do workflow."""
+            zabbix_create_item(workflow_id, workflow_name, "Execution_Status")
+
+            """Cria ou atualiza o item de status do workflow"""
+            zabbix_create_item(workflow_id, workflow_name, "Workflow_Status")
+
+            """Cria ou atualiza o item de isArchived"""
+            zabbix_create_item(workflow_id, workflow_name, "Workflow_Archived")
 
             """Cria ou atualiza o item 'updatedAt'"""
             zabbix_create_item(workflow_id, workflow_name, "Update")
