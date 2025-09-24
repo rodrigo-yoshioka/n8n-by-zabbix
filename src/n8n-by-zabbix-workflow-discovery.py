@@ -60,97 +60,14 @@ def zabbix_get_interface_id(hostid):
         raise Exception(f"Interface nao encontrada para o host ID '{hostid}'.")
 
 # Cria ou atualiza um item no zabbix
-def zabbix_create_item(workflow_id, workflow_name, item):
+def zabbix_create_item(params):
     """Cria ou atualiza um item no Zabbix."""
-    host_id = zabbix_config['HOST_ID']
-    host_interface_id = zabbix_get_interface_id(host_id)
-
-    if item == "Execution_Status":
-        item_name = f"Workflow - {workflow_name} - Status Execução"
-        item_key = f"n8n.workflow.execution.status[{workflow_id}]"
-        value_type = 3 # Tipo de dado: Numérico (unsigned)
-        preprocessing = {"type": 5, "params": "(\\d+)\n\\1", "error_handler": 0}
-        tags = {"tag":"component","value":"Cron"}
-        params = {
-            "name": item_name,
-            "key_": item_key,
-            "type": 0,  # Zabbix Agent (passive) para que o Zabbix colete o valor
-            "value_type": value_type,
-            "interfaceid": host_interface_id,
-            "hostid": host_id,
-            "delay": "60s",
-            "history": "90d",
-            "trends": "400d",
-            "preprocessing": preprocessing,
-            "description": "Coleta qual o status das execuções do workflow.",
-            "tags": tags
-        }
-    elif item == "Workflow_Status":
-        item_name = f"Workflow - {workflow_name} - Status"
-        item_key = f"n8n.workflow.status[{workflow_id}]"
-        value_type = 3 # Tipo de dado: Numérico (unsigned)
-        preprocessing = {"type": 5, "params": "(\\d+)\n\\1", "error_handler": 0}
-        tags = {"tag":"component","value":"Cron"}
-        params = {
-            "name": item_name,
-            "key_": item_key,
-            "type": 0,  # Zabbix Agent (passive) para que o Zabbix colete o valor
-            "value_type": value_type,
-            "interfaceid": host_interface_id,
-            "hostid": host_id,
-            "delay": "60s",
-            "history": "90d",
-            "trends": "400d",
-            "preprocessing": preprocessing,
-            "description": "Coleta se o workflow está ativo ou não.",
-            "tags": tags
-        }
-    elif item == "Workflow_Archived":
-        item_name = f"Workflow - {workflow_name} - Arquivado"
-        item_key = f"n8n.workflow.is.archived[{workflow_id}]"
-        value_type = 3 # Tipo de dado: Numérico (unsigned)
-        preprocessing = {"type": 5, "params": "(\\d+)\n\\1", "error_handler": 0}
-        tags = {"tag":"component","value":"Cron"}
-        params = {
-            "name": item_name,
-            "key_": item_key,
-            "type": 0,  # Zabbix Agent (passive) para que o Zabbix colete o valor
-            "value_type": value_type,
-            "interfaceid": host_interface_id,
-            "hostid": host_id,
-            "delay": "60s",
-            "history": "90d",
-            "trends": "400d",
-            "preprocessing": preprocessing,
-            "description": "Coleta se o workflow foi arquivado. Este item faz parte das triggers, caso seja arquivado, alertas não serão disparados.",
-            "tags": tags
-        }
-    elif item == "Update":
-        item_name = f"Workflow - {workflow_name} - {item}"
-        item_key = f"n8n.workflow.update[{workflow_id}]"
-        value_type = 3  # Tipo de dado: Numérico (unsigned)
-        preprocessing = ""
-        tags = {"tag": "component", "value": "Cron"}
-        params = {
-            "name": item_name,
-            "key_": item_key,
-            "type": 0, # Zabbix Agent (passive) para que o Zabbix colete o valor
-            "value_type": value_type,
-            "interfaceid": host_interface_id,
-            "hostid": host_id,
-            "units": "unixtime",
-            "delay": "60s",
-            "history": "90d",
-            "trends": "400d",
-            "description": "Coleta a data da última alteração do workflow.",
-            "tags": tags
-        }
 
     # Verifica se o item já existe
     existing_items = zabbix_api_request("item.get", {
         "output": ["itemid", "name", "key_"],
-        "hostids": host_id,
-        "filter": {"key_": item_key}
+        "hostids": params['hostid'],
+        "filter": {"key_": params['key_']}
     })
 
     if existing_items:
@@ -160,16 +77,26 @@ def zabbix_create_item(workflow_id, workflow_name, item):
         params["itemid"] = item_id
         update_response = zabbix_api_request("item.update", params)
         if update_response:
-            print(f"Item atualizado: '{item_name}' (Key: {item_key})")
+            print(f"Item atualizado: {update_response['itemids'][0]} - {params['name']} (Key: {params['key_']})")
+            return update_response['itemids'][0]
         else:
-            print(f"Falha ao atualizar item: '{item_name}' (Key: {item_key})", file=sys.stderr)
+            print(f"Falha ao atualizar item: {update_response['itemids'][0]} - {params['name']} (Key: {params['key_']})", file=sys.stderr)
+            return None
     else:
         # Se o item não existe, cria-o
+        print("Cria")
         create_response = zabbix_api_request("item.create", params)
         if create_response:
-            print(f"Item criado: '{item_name}' (Key: {item_key})")
+            print(f"Item criado: {params['name']} (Key: {params['key_']})")
+            return create_response['itemids'][0]
         else:
-            print(f"Falha ao criar item: '{item_name}' (Key: {item_key})", file=sys.stderr)
+            print(f"Falha ao criar item: {params['name']} (Key: {params['key']})", file=sys.stderr)
+            return None
+
+# Cria ou atualiza as triggers
+def zabbix_create_trigger():
+    """Cria ou atualiza uma trigger no Zabbix."""
+    print("1")
 
 # --- Funções de Banco de Dados ---
 def get_workflows_from_db():
@@ -219,6 +146,8 @@ def get_workflows_from_db():
 # --- Lógica Principal ---
 def main():
     workflows = get_workflows_from_db()
+    host_id = zabbix_config['HOST_ID']
+    host_interface_id = zabbix_get_interface_id(host_id)
 
     if not workflows:
         print("Nenhum workflow encontrado no banco de dados ou erro ao acessá-lo.", file=sys.stderr)
@@ -231,16 +160,38 @@ def main():
         # Cria ou atualiza o item 'Status'
         if wf['isArchived'] == 0:
             """Cria ou atualiza o item com o status de execucao do workflow."""
-            zabbix_create_item(workflow_id, workflow_name, "Execution_Status")
+            params = {
+                "name": f"Workflow - {workflow_name} - Status Execução",
+                "key_": f"n8n.workflow.execution.status[{workflow_id}]",
+                "type": 0,  # Zabbix Agent (passive) para que o Zabbix colete o valor
+                "value_type": 3,
+                "interfaceid": host_interface_id,
+                "hostid": host_id,
+                "delay": "60s",
+                "history": "90d",
+                "trends": "400d",
+                "preprocessing": {"type": 5, "params": "(\\d+)\n\\1", "error_handler": 0},
+                "description": "Coleta qual o status das execuções do workflow.",
+                "tags": {"tag": "component", "value": "Cron"}
+            }
+            item_id = zabbix_create_item(params)
+            trigger_expression_error = f"({{{HOST.HOST}}}:{params['item_key']}.last()) > 0"
+            trigger_name_error = f"Workflow '{workflow_name}' - {item_key} - Falha na execução"
+            trigger_params = {
+                "description": teste,
+                "expression": f"{{{{HOST.HOST}}}:{item_key}.last()} > 0",
+                "priority": 3,
+                "status": 0
+            }
 
-            """Cria ou atualiza o item de status do workflow"""
-            zabbix_create_item(workflow_id, workflow_name, "Workflow_Status")
-
-            """Cria ou atualiza o item de isArchived"""
-            zabbix_create_item(workflow_id, workflow_name, "Workflow_Archived")
-
-            """Cria ou atualiza o item 'updatedAt'"""
-            zabbix_create_item(workflow_id, workflow_name, "Update")
+            # """Cria ou atualiza o item de status do workflow"""
+            # zabbix_create_item(workflow_id, workflow_name, "Workflow_Status")
+            #
+            # """Cria ou atualiza o item de isArchived"""
+            # zabbix_create_item(workflow_id, workflow_name, "Workflow_Archived")
+            #
+            # """Cria ou atualiza o item 'updatedAt'"""
+            # zabbix_create_item(workflow_id, workflow_name, "Update")
 
 if __name__ == "__main__":
     main()
