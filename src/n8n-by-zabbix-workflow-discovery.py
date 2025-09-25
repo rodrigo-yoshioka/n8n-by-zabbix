@@ -59,6 +59,17 @@ def zabbix_get_interface_id(hostid):
     else:
         raise Exception(f"Interface nao encontrada para o host ID '{hostid}'.")
 
+# Obtem o hostname
+def zabbix_get_hostname(hostid):
+    params = {
+        "output": ["name"],
+        "filter": {
+            "hostid": [hostid]
+        }
+    }
+    resultado = zabbix_api_request("host.get", params)
+    return resultado[0]['name']
+
 # Cria ou atualiza um item no zabbix
 def zabbix_create_item(params):
     """Cria ou atualiza um item no Zabbix."""
@@ -94,9 +105,23 @@ def zabbix_create_item(params):
             return None
 
 # Cria ou atualiza as triggers
-def zabbix_create_trigger():
+def zabbix_create_trigger(trigger_params):
     """Cria ou atualiza uma trigger no Zabbix."""
-    print("1")
+    # Verifica se a trigger já existe
+    existing_triggers = zabbix_api_request("trigger.get", {
+        "output": ["triggerid", "description"],
+        "filter": {"description": trigger_params['description']}
+    })
+    if existing_triggers:
+        trigger_id = existing_triggers[0]['triggerid']
+        trigger_params['triggerid'] = trigger_id
+        update_response = zabbix_api_request("trigger.update", trigger_params)
+        # if update_response:
+        #     print(f"Trigger atualizada: '{trigger_name}'")
+        return update_response
+    else:
+        create_response = zabbix_api_request("trigger.create", trigger_params)
+        return create_response
 
 # --- Funções de Banco de Dados ---
 def get_workflows_from_db():
@@ -148,6 +173,7 @@ def main():
     workflows = get_workflows_from_db()
     host_id = zabbix_config['HOST_ID']
     host_interface_id = zabbix_get_interface_id(host_id)
+    hostname = zabbix_get_hostname(host_id)
 
     if not workflows:
         print("Nenhum workflow encontrado no banco de dados ou erro ao acessá-lo.", file=sys.stderr)
@@ -174,24 +200,97 @@ def main():
                 "description": "Coleta qual o status das execuções do workflow.",
                 "tags": {"tag": "component", "value": "Cron"}
             }
-            item_id = zabbix_create_item(params)
-            trigger_expression_error = f"({{{HOST.HOST}}}:{params['item_key']}.last()) > 0"
-            trigger_name_error = f"Workflow '{workflow_name}' - {item_key} - Falha na execução"
-            trigger_params = {
-                "description": teste,
-                "expression": f"{{{{HOST.HOST}}}:{item_key}.last()} > 0",
-                "priority": 3,
-                "status": 0
-            }
+            zabbix_create_item(params)
 
-            # """Cria ou atualiza o item de status do workflow"""
-            # zabbix_create_item(workflow_id, workflow_name, "Workflow_Status")
-            #
-            # """Cria ou atualiza o item de isArchived"""
-            # zabbix_create_item(workflow_id, workflow_name, "Workflow_Archived")
-            #
-            # """Cria ou atualiza o item 'updatedAt'"""
-            # zabbix_create_item(workflow_id, workflow_name, "Update")
+            trigger_params = {
+                "description": f"Workflow {workflow_name} falhou",
+                "expression": f"last(/{hostname}/n8n.workflow.execution.status[{workflow_id}])>0",
+                "priority": 4,
+                "status": 0,
+                "recovery_mode": 0,
+                "manual_close": 1,
+                "comments": "A trigger irá ficar ativa caso haja pelo menos 1 erro de execução dentro das últimas 24h "
+                            "e irá desativar automaticamente após 24h do último erro."
+            }
+            print(zabbix_create_trigger(trigger_params))
+            ###########################################################################################################
+            """Cria ou atualiza o item de status do workflow"""
+            params = {
+                "name": f"Workflow - {workflow_name} - Status",
+                "key_": f"n8n.workflow.status[{workflow_id}]",
+                "type": 0,  # Zabbix Agent (passive) para que o Zabbix colete o valor
+                "value_type": 3,
+                "interfaceid": host_interface_id,
+                "hostid": host_id,
+                "delay": "60s",
+                "history": "90d",
+                "trends": "400d",
+                "preprocessing": {"type": 5, "params": "(\\d+)\n\\1", "error_handler": 0},
+                "description": "Coleta se o workflow está ativo ou não.",
+                "tags": {"tag": "component", "value": "Cron"}
+            }
+            zabbix_create_item(params)
+            ###########################################################################################################
+            """Cria ou atualiza o item de isArchived"""
+            params = {
+                "name": f"Workflow - {workflow_name} - Arquivado",
+                "key_": f"n8n.workflow.is.archived[{workflow_id}]",
+                "type": 0,  # Zabbix Agent (passive) para que o Zabbix colete o valor
+                "value_type": 3,
+                "interfaceid": host_interface_id,
+                "hostid": host_id,
+                "delay": "60s",
+                "history": "90d",
+                "trends": "400d",
+                "preprocessing": {"type": 5, "params": "(\\d+)\n\\1", "error_handler": 0},
+                "description": "Coleta se o workflow foi arquivado. Workflows arquivados significam que não devem ser mais "
+                               "monitorados, desative ou exclua todos os itens deste workflow para que não haja alarmes.",
+                "tags": {"tag": "component", "value": "Cron"}
+            }
+            zabbix_create_item(params)
+
+            trigger_params = {
+                "description": f"Workflow {workflow_name} foi Arquivado",
+                "expression": f"change(/{hostname}/n8n.workflow.is.archived[{workflow_id}])<>0",
+                "priority": 1,
+                "status": 0,
+                "recovery_mode": 2,
+                "manual_close": 1,
+                "comments": "Se esta trigger estiver ligada significa que o workflow foi arquivado no n8n, caso seja porque "
+                            "o workflow não será mais utilizado, desative ou exclua todos os itens deste workflow. "
+                            "Esta trigger não desativa sozinha, deve ser feita pelo reconhecimento do alarme."
+            }
+            print(zabbix_create_trigger(trigger_params))
+            ###########################################################################################################
+            """Cria ou atualiza o item 'updatedAt'"""
+            params = {
+                "name": f"Workflow - {workflow_name} - Update",
+                "key_": f"n8n.workflow.update[{workflow_id}]",
+                "type": 0,  # Zabbix Agent (passive) para que o Zabbix colete o valor
+                "value_type": 3,
+                "interfaceid": host_interface_id,
+                "hostid": host_id,
+                "units": "unixtime",
+                "delay": "60s",
+                "history": "90d",
+                "trends": "400d",
+                "description": "Coleta a data da última alteração do workflow.",
+                "tags": {"tag": "component", "value": "Cron"}
+            }
+            zabbix_create_item(params)
+
+            trigger_params = {
+                "description": f"Workflow {workflow_name} foi alterado",
+                "expression": f"change(/{hostname}/n8n.workflow.update[{workflow_id}])<>0",
+                "priority": 1,
+                "status": 0,
+                "recovery_mode": 2,
+                "manual_close": 1,
+                "comments": "Esta trigger ativa se a data da última alteração do workflow foi alterado. É mais um aviso "
+                            "para ciência de que houve alterações. Ela não desativa sozinha, sendo necessário ação manual. "
+                            "Recomenda-se descrever as alterações para referência futura."
+            }
+            print(zabbix_create_trigger(trigger_params))
 
 if __name__ == "__main__":
     main()
