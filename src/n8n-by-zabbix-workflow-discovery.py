@@ -197,7 +197,8 @@ def main():
                 "history": "90d",
                 "trends": "400d",
                 "preprocessing": {"type": 5, "params": "(\\d+)\n\\1", "error_handler": 0},
-                "description": "Coleta qual o status das execuções do workflow.",
+                "description": "Coleta qual o status das execuções do workflow."
+                               "\n\n***Não altere este item no Zabbix o item é gerado/atualizado automaticamente via script***.",
                 "tags": {"tag": "component", "value": "Cron"}
             }
             zabbix_create_item(params)
@@ -211,6 +212,7 @@ def main():
                 "manual_close": 1,
                 "comments": "A trigger irá ficar ativa caso haja pelo menos 1 erro de execução dentro das últimas 24h "
                             "e irá desativar automaticamente após 24h do último erro."
+                            "\n\n***Não altere este item no Zabbix o item é gerado/atualizado automaticamente via script***."
             }
             print(zabbix_create_trigger(trigger_params))
             ###########################################################################################################
@@ -226,7 +228,8 @@ def main():
                 "history": "90d",
                 "trends": "400d",
                 "preprocessing": {"type": 5, "params": "(\\d+)\n\\1", "error_handler": 0},
-                "description": "Coleta se o workflow está ativo ou não.",
+                "description": "Coleta se o workflow está ativo ou não."
+                               "\n\n***Não altere este item no Zabbix o item é gerado/atualizado automaticamente via script***.",
                 "tags": {"tag": "component", "value": "Cron"}
             }
             zabbix_create_item(params)
@@ -244,7 +247,8 @@ def main():
                 "trends": "400d",
                 "preprocessing": {"type": 5, "params": "(\\d+)\n\\1", "error_handler": 0},
                 "description": "Coleta se o workflow foi arquivado. Workflows arquivados significam que não devem ser mais "
-                               "monitorados, desative ou exclua todos os itens deste workflow para que não haja alarmes.",
+                               "monitorados, desative ou exclua todos os itens deste workflow para que não haja alarmes."
+                               "\n\n***Não altere este item no Zabbix o item é gerado/atualizado automaticamente via script***.",
                 "tags": {"tag": "component", "value": "Cron"}
             }
             zabbix_create_item(params)
@@ -259,6 +263,7 @@ def main():
                 "comments": "Se esta trigger estiver ligada significa que o workflow foi arquivado no n8n, caso seja porque "
                             "o workflow não será mais utilizado, desative ou exclua todos os itens deste workflow. "
                             "Esta trigger não desativa sozinha, deve ser feita pelo reconhecimento do alarme."
+                            "\n\n***Não altere este item no Zabbix o item é gerado/atualizado automaticamente via script***."
             }
             print(zabbix_create_trigger(trigger_params))
             ###########################################################################################################
@@ -274,7 +279,8 @@ def main():
                 "delay": "60s",
                 "history": "90d",
                 "trends": "400d",
-                "description": "Coleta a data da última alteração do workflow.",
+                "description": "Coleta a data da última alteração do workflow."
+                                "\n\n***Não altere este item no Zabbix o item é gerado/atualizado automaticamente via script***.",
                 "tags": {"tag": "component", "value": "Cron"}
             }
             zabbix_create_item(params)
@@ -289,6 +295,7 @@ def main():
                 "comments": "Esta trigger ativa se a data da última alteração do workflow foi alterado. É mais um aviso "
                             "para ciência de que houve alterações. Ela não desativa sozinha, sendo necessário ação manual. "
                             "Recomenda-se descrever as alterações para referência futura."
+                            "\n\n***Não altere este item no Zabbix o item é gerado/atualizado automaticamente via script***."
             }
             print(zabbix_create_trigger(trigger_params))
 
