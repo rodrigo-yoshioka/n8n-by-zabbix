@@ -298,6 +298,43 @@ def main():
                             "\n\n***Não altere este item no Zabbix o item é gerado/atualizado automaticamente via script***."
             }
             print(zabbix_create_trigger(trigger_params))
+            ###########################################################################################################
+            """Cria ou atualiza o item com o tempo médio de execução do workflow."""
+            params = {
+                "name": f"Workflow - {workflow_name} - Tempo médio",
+                "key_": f"n8n.workflow.average.time[{workflow_id}]",
+                "type": 0,  # Zabbix Agent (passive) para que o Zabbix colete o valor
+                "value_type": 0,
+                "interfaceid": host_interface_id,
+                "hostid": host_id,
+                "units": "s",
+                "delay": "300s",
+                "history": "90d",
+                "trends": "400d",
+                "description": "Coleta o tempo médio de execução dos últimos ."
+                               "\n\n***Não altere este item no Zabbix o item é gerado/atualizado automaticamente via script***.",
+                "tags": {"tag": "component", "value": "Cron"}
+            }
+            zabbix_create_item(params)
+
+            ###########################################################################################################
+            """Cria ou atualiza o item com o tempo máximo de execução do workflow."""
+            params = {
+                "name": f"Workflow - {workflow_name} - Tempo máximo",
+                "key_": f"n8n.workflow.max.time[{workflow_id}]",
+                "type": 0,  # Zabbix Agent (passive) para que o Zabbix colete o valor
+                "value_type": 0,
+                "interfaceid": host_interface_id,
+                "hostid": host_id,
+                "units": "s",
+                "delay": "300s",
+                "history": "90d",
+                "trends": "400d",
+                "description": "Coleta o tempo máximo de execução dos últimos 10min ."
+                               "\n\n***Não altere este item no Zabbix o item é gerado/atualizado automaticamente via script***.",
+                "tags": {"tag": "component", "value": "Cron"}
+            }
+            zabbix_create_item(params)
 
 if __name__ == "__main__":
     main()

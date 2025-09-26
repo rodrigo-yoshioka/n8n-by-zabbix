@@ -139,6 +139,48 @@ def coleta_update(workflow_id, n8n_config):
         if conn:
             conn.close()
 
+def coleta_average_time(workflow_id, n8n_config):
+    conn = get_db_connection(n8n_config)
+    if conn is None:
+        return 0
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+                SELECT AVG(EXTRACT(EPOCH FROM ("stoppedAt" - "startedAt"))) AS media_tempo_execucao_segundos 
+                FROM n8n."execution_entity" 
+                WHERE "workflowId" = %s AND status IN ('success','error') AND "startedAt" > NOW() - interval '10 MINUTES'
+            """, (workflow_id,))
+        tempo_medio = cursor.fetchone()
+        return tempo_medio[0]
+    except psycopg2.Error as e:
+        print(f"Erro ao acessar o banco de dados PostgreSQL: {e}", file=sys.stderr)
+        return 0
+    finally:
+        if conn:
+            conn.close()
+
+def coleta_max_time(workflow_id, n8n_config):
+    conn = get_db_connection(n8n_config)
+    if conn is None:
+        return 0
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+                SELECT MAX(EXTRACT(EPOCH FROM ("stoppedAt" - "startedAt"))) AS max_tempo_execucao_segundos 
+                FROM n8n."execution_entity" 
+                WHERE "workflowId" = %s AND status IN ('success','error') AND "startedAt" > NOW() - interval '10 MINUTES' 
+            """, (workflow_id,))
+        tempo_maximo = cursor.fetchone()
+        return tempo_maximo[0]
+    except psycopg2.Error as e:
+        print(f"Erro ao acessar o banco de dados PostgreSQL: {e}", file=sys.stderr)
+        return 0
+    finally:
+        if conn:
+            conn.close()
+
 if __name__ == "__main__":
 
     configs = load_config()
@@ -156,4 +198,8 @@ if __name__ == "__main__":
             print(coleta_is_archived(workflow, n8n_config))
         elif action == "update":
             print(coleta_update(workflow, n8n_config))
+        elif action == "average_time":
+            print(coleta_average_time(workflow, n8n_config))
+        elif action == "max_time":
+            print(coleta_max_time(workflow, n8n_config))
 

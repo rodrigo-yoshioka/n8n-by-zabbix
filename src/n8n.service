@@ -1,0 +1,69 @@
+[Unit]
+Description=N8N Workflow Automation
+Documentation=https://docs.n8n.io/
+After=network.target
+
+[Service]
+# Se você criou um usuário específico para o N8N, use-o aqui.
+# Se você já estiver rodando como root e não quiser criar um novo usuário,
+# remova ou comente esta linha e a linha User/Group abaixo.
+User=root
+Group=root
+
+# Defina o diretório de trabalho do N8N
+# Se você não moveu os dados do N8N, ajuste este caminho.
+WorkingDirectory=/opt/n8n
+
+# Comando para iniciar o N8N. Certifique-se de que o caminho para o n8n está correto.
+# Se você instalou via npm globalmente, pode ser apenas 'n8n'
+# Se você instalou em um local específico, use o caminho absoluto.
+# Exemplo: /usr/local/bin/n8n
+# Se estiver usando npm com npx, use: npx n8n start
+# Adapte o comando abaixo conforme a sua instalação:
+# Exemplo com npx:
+# ExecStart=/usr/bin/npx n8n start
+# Exemplo com instalação global:
+# ExecStart=/usr/local/bin/n8n start
+# Adapte o comando abaixo para a sua instalação:
+#ExecStart=/usr/local/bin/n8n start
+ExecStart=/root/.nvm/versions/node/v22.19.0/bin/node  /root/.nvm/versions/node/v22.19.0/bin/n8n start
+
+# O N8N precisa de algumas variáveis de ambiente para configuração.
+# Ajuste os valores conforme a sua configuração.
+#Environment="NODE_ENV=production"
+#Environment="N8N_HOST=localhost"
+#Environment="N8N_PORT=5678"
+#Environment="N8N_PROTOCOL=http"
+# Se você desabilitou a verificação segura de cookies, descomente a linha abaixo:
+Environment="N8N_SECURE_COOKIE=false"
+# metrics
+Environment="N8N_METRICS=false"
+# healthz
+Environment="QUEUE_HEALTH_CHECK_ACTIVE=true"
+# Ajuste do timezone
+Environment="GENERIC_TIMEZONE=America/Sao_Paulo"
+Environment="N8N_RUNNERS_ENABLED=true"
+Environment="N8N_BLOCK_ENV_ACCESS_IN_NODE=true"
+Environment="N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true"
+
+# Configurações do PostgreSQL (se estiver usando)
+# Comente estas linhas se estiver usando o banco de dados SQLite padrão
+Environment="DB_TYPE=postgresdb"
+Environment="DB_POSTGRESDB_DATABASE=n8n_db"
+Environment="DB_POSTGRESDB_HOST=localhost"
+Environment="DB_POSTGRESDB_PORT=5432"
+Environment="DB_POSTGRESDB_USER=n8n_user"
+Environment="DB_POSTGRESDB_PASSWORD=########## ADICIONAR A SENHA AQUI #####################"
+Environment="DB_POSTGRESDB_POOL_SIZE=10"
+Environment="DB_POSTGRESDB_SCHEMA=n8n"
+
+# Reinicia o serviço em caso de falha
+Restart=always
+RestartSec=10
+
+# Configurações de log (opcional, mas recomendado)
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
